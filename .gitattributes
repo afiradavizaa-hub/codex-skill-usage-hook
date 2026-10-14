@@ -1,0 +1,7 @@
+# shell 脚本必须保持 LF，否则 Linux / macOS 上 `#!/bin/sh\r` 会直接报错
+*.sh text eol=lf
+# Windows 脚本保持 CRLF（install.ps1 还带 BOM，供 Windows PowerShell 5.1 正确解码中文）
+*.cmd text eol=crlf
+*.ps1 text eol=crlf
+# 其余按仓库里的原样（LF）
+* text=auto eol=lf

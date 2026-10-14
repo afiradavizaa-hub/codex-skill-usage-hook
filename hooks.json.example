@@ -1,0 +1,30 @@
+{
+  "description": "Show and log which skill / plugin / MCP each tool call uses. PreToolUse must stay synchronous (async hook output never reaches the session). SessionStart refreshes the local skill/plugin index and only speaks up when something is wrong.",
+  "hooks": {
+    "SessionStart": [
+      {
+        "matcher": "startup|resume|clear",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "__HOOK_DIR__\\run-skill-usage-hook.cmd",
+            "timeout": 30,
+            "statusMessage": "indexing skills / plugins / MCP"
+          }
+        ]
+      }
+    ],
+    "PreToolUse": [
+      {
+        "matcher": "*",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "__HOOK_DIR__\\run-skill-usage-hook.cmd",
+            "timeout": 10
+          }
+        ]
+      }
+    ]
+  }
+}

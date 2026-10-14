@@ -1,0 +1,38 @@
+{
+  "_comment": "codex skill/plugin 提示设置。改这里立即生效，不需要重新信任（信任只跟 hooks.json 绑定）。删掉某项或用 null 即回到内置默认值；环境变量 CODEX_SKILL_USAGE_* 优先级更高。完整说明见仓库 README.md。",
+
+  "style": "emoji",
+  "note": true,
+  "notify": true,
+  "notifyStart": true,
+  "verbose": false,
+  "maxBytes": 2097152,
+  "debug": false,
+
+  "_noteLimit": "同一个 skill / 插件在一个项目里只有前 noteLimit 次出现时带中文注释，之后只显示名字；后来新出现的 skill / 插件自己重新从第一次开始计数。0 = 从不显示注释；想回到“每次都显示注释”就设一个很大的数（如 999999）。",
+  "noteLimit": 3,
+
+  "_maxNoteChars": "尾部那句说明最多几个字，超出截断（默认 80）",
+  "maxNoteChars": 80,
+
+  "_state": "各项目的计数文件（按项目隔离）。删掉它就重置“前三次”的记录。",
+  "state": "~/.codex/skill-usage.state.json",
+
+  "_log": "日志路径，改成 \"off\" 就完全不写日志",
+  "log": "~/.codex/skill-usage.jsonl",
+
+  "_notes": "手写中文说明字典的路径。它优先级最高，只用来覆盖自动索引生成的那句英文说明",
+  "notes": "~/.codex/skill-usage.notes.json",
+
+  "_autoNotes": "自动索引文件路径（生成物，可随时删；SessionStart 会自动重建）。里面是 skills / plugins / mcp 三个桶：新装的 skill、插件、MCP 服务器会被自动收录，不需要手工登记",
+  "autoNotes": "~/.codex/skill-usage.notes.auto.json",
+
+  "_scanRoots": "额外要索引的目录（逗号分隔）。默认扫三处：~/.codex/skills（含 .system）、~/.codex/plugins/cache、~/.agents/skills。~/.codex/marketplaces 是可选目录（本机 1415 个目录），扫它会拖慢会话启动，所以默认不扫。加进来的目录里的 SKILL.md 会被当成已装技能（提示显示 🎯 而不是 📄）",
+  "scanRoots": [],
+
+  "_includeServers": "默认被忽略的 Codex 内置 MCP server（node_repl/cua_repl/tools/codex_app）。想让它也出提示就加名字；想让提示更安静就清空这个数组",
+  "includeServers": ["codex_app"],
+
+  "_ignoreTools": "不想上报的裸名工具。Codex 自带的（bash/exec_command/apply_patch/js/list_mcp_resources/spawn_agent 等）已内置忽略；这里补充额外的。不在忽略名单、也没写进 skill-usage.notes.json 的裸名工具会显示成 ❔ UNKNOWN（不会瞎猜成插件或技能）",
+  "ignoreTools": []
+}

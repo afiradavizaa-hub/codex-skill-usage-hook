@@ -1,0 +1,15 @@
+# generated / user data — never commit these
+skill-usage.jsonl
+skill-usage.jsonl.1
+skill-usage.state.json
+skill-usage.notes.json
+skill-usage.notes.auto.json
+
+# local experiments
+hooks.json
+hooks.json.bak-*
+*.log
+*.tmp
+node_modules/
+.DS_Store
+Thumbs.db

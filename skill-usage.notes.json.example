@@ -1,0 +1,16 @@
+{
+  "_comment": "提示尾部那句说明（优先级最高，覆盖自动索引里的原文）。skills 按技能名匹配，plugins 按插件名匹配（插件技能写成 插件/技能），mcp 按 MCP server 名匹配，tools 按裸名插件工具匹配。没写的名字会退回 skill-usage.notes.auto.json 的说明，所以新装的 skill / 插件 / MCP 不用登记。tools / plugins / mcp 三个桶同时也是「已确认的插件工具」名单：裸名工具只有登记在这里才显示 🔌 PLUGIN TOOL，其余一律 ❔ UNKNOWN。改完立即生效，不需要重新信任。",
+  "skills": {
+    "ponytail": "示例：这是我的技能说明",
+    "imagegen": "示例：用 AI 生成或编辑位图素材"
+  },
+  "plugins": {
+    "latex": "示例：LaTeX 编译与 TeX Live 环境"
+  },
+  "mcp": {
+    "code-review": "示例：代码审查插件提供的工具"
+  },
+  "tools": {
+    "list_artifacts": "示例：列出本会话关联的 PR / 工作树"
+  }
+}
