@@ -8,7 +8,7 @@ Zero model-token cost (it only returns `systemMessage`), no network, no daemon, 
 Windows is the tested platform; macOS/Linux can run the same script through `run-skill-usage-hook.sh`.
 
 ```
-⚙️ HOOK ▸ skill-usage v3  —  已索引 40 技能 / 18 插件 / 3 MCP；新装的会自动收录
+⚙️ HOOK ▸ skill-usage v3.2  —  已索引 40 技能 / 18 插件 / 3 MCP；新装的会自动收录
 🔌 PLUGIN MCP ▸ code-review/review_pr  —  代码审查：PR 评论、CI 失败排查
 🎯 SKILL ▸ ponytail  —  懒人资深工程师模式：最小改动，回复一屏读完
 🧩 PLUGIN SKILL ▸ latex/latex-compile  —  LaTeX 编译与 TeX Live 环境
@@ -17,7 +17,8 @@ Windows is the tested platform; macOS/Linux can run the same script through `run
 ❔ UNKNOWN ▸ frobnicate_widget  —  裸名工具，来源不明确
 ```
 
-第一行只在会话启动时出现一次（用来确认 hook 真的在跑，出问题也在这里报）；其余行每次「真的用到」才出现。
+第一行只在会话启动时出现一次（用来确认 hook 真的在跑，出问题也在这里报）；其余行每次「真的用到」才出现，
+而且**每一次都带尾部那句说明**（v3.2 起不再有「前三次才带」的限制）。
 Codex 会给 `systemMessage` 加 `warning:` 前缀，那是它的显示方式，不是错误。
 
 ## 要求
@@ -67,12 +68,12 @@ Codex 把信任绑在 `hooks.json` 的**内容哈希**上。第一次装完（�
 | `note` | `true` | 是否显示尾部说明 |
 | `notify` | `true` | 关掉就只写日志，不在会话里提示 |
 | `notifyStart` | `true` | 关掉就不显示启动那一行 |
-| `noteLimit` | `3` | 同一个名字在一个项目里带说明的次数（`0` = 从不；想每次都显示就写个很大的数） |
+| `noteLimit` | 不设（每次都带） | 不设 = 每次调用都带说明；填有限数 N = 同一个名字在一个项目里只带前 N 次（`0` = 从不） |
 | `maxNoteChars` | `80` | 说明最大长度 |
 | `verbose` | `false` | 提示后附上命中的 SKILL.md 路径 |
 | `log` | `~/.codex/skill-usage.jsonl` | 日志路径；改成 `off` 完全不写 |
 | `maxBytes` | `2097152` | 日志轮转阈值（超了改名 `.1`，磁盘占用封顶 2×） |
-| `notes` / `autoNotes` / `state` | `~/.codex/skill-usage.*.json` | 手写字典 / 自动索引 / 计数文件 |
+| `notes` / `autoNotes` / `state` | `~/.codex/skill-usage.*.json` | 手写字典 / 自动索引 / 计数文件（只在设了有限 `noteLimit` 时才用） |
 | `scanRoots` | 空 | 额外要索引的目录（逗号分隔）；加进来的目录里的 SKILL.md 会被当成已装技能 |
 | `includeServers` | `["codex_app"]` | 本来被忽略的内置 MCP server |
 | `ignoreTools` | 空 | 额外要静音的裸名工具 |
@@ -107,11 +108,12 @@ Codex 把信任绑在 `hooks.json` 的**内容哈希**上。第一次装完（�
 | 场景 | 耗时 |
 | --- | --- |
 | 普通工具调用（脚本直接退出） | 35.3 – 36.6 ms |
-| 真的读了 SKILL.md（查说明、写计数） | 38.3 – 39.9 ms |
+| 真的读了 SKILL.md（查说明） | 38.3 – 39.9 ms |
 | SessionStart（重建索引并写盘） | 47.5 – 50.8 ms |
 
 其中约 32 ms 是 node 进程启动，脚本逻辑 2–3 ms。**模型 token 开销恒为 0**：只回 `systemMessage`，不返回 `additionalContext`。
-无常驻进程、无网络请求、空闲开销 0；只有真的识别到 skill / 插件时才写日志与计数。
+无常驻进程、无网络请求、空闲开销 0；只有真的识别到 skill / 插件时才写日志（默认每次带说明，也就
+不再写计数文件；只有显式设了有限 `noteLimit` 才会用到它）。
 
 ## 隐私
 
@@ -144,7 +146,7 @@ $hook = "<CodexHome>\hooks\run-skill-usage-hook.cmd"
 | --- | --- |
 | 会话里完全没有提示 | 启动时有没有提示信任 hooks？`--check` 能不能跑？事件名对不对 |
 | 有提示但日志没增长 | `log` 是不是 `off`；提示里有没有 `⚠️ 日志写入失败` |
-| 提示没有说明文字 | 这个名字在本项目已用满 `noteLimit` 次，或 `note` 关了 |
+| 提示没有说明文字 | `note` 关了；或显式设了有限 `noteLimit` 且这个名字在本项目已用满 |
 | 提示里出现 📄 | 读到的是「确认不了已装」的 SKILL.md；要算已装就把目录加进 `scanRoots` |
 | 提示里出现 ❔ | 这个裸名工具没登记。确认是插件工具就写进 `notes.json` 的 `tools` 桶，想静音就加 `ignoreTools` |
 
@@ -152,11 +154,12 @@ $hook = "<CodexHome>\hooks\run-skill-usage-hook.cmd"
 
 ```bash
 node --check skill-usage-hook.mjs        # 语法
-node tests/hook-tests.mjs                # 28 项定向用例（合成事件喂真实脚本，全部重定向到临时目录）
+node tests/hook-tests.mjs                # 38 项定向用例（合成事件喂真实脚本，全部重定向到临时目录）
 ```
 
 测试覆盖：已装技能的各种写法（引号 / 空格 / 分号 / `&&` / 管道 / 外壳包装 / Read 工具）、未确认读取、
-搜索/列目录/复制/补丁/写文件不算、裸名未知工具、MCP 工具、内置工具静音、坏 state、空事件、SessionStart 索引。
+搜索/列目录/复制/补丁/写文件不算、裸名未知工具、MCP 工具、内置工具静音、**说明每次都带（同一技能连打 6 次）**、
+有限 `noteLimit` 与 `noteLimit=0` 的旧行为、坏 state、空事件、SessionStart 索引。
 
 ## 卸载
 

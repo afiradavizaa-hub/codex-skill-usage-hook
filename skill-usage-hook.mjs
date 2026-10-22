@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 // ============================================================================
-// Codex hook (v3) — 在会话里显示、并在本地记录「这次工具调用用到了哪个 skill /
+// Codex hook (v3.2) — 在会话里显示、并在本地记录「这次工具调用用到了哪个 skill /
 // 插件 / MCP」，同时自动索引本机新装的 skill、插件与 MCP 服务器（无需手工登记）。
 //
 // stdin  : Codex hook 事件 JSON（PreToolUse / SessionStart）
@@ -14,6 +14,11 @@
 //   * 裸名工具不按名字猜类别：只有手写字典里登记过的名字才算已确认的插件工具，
 //     其余一律标 ❔ UNKNOWN。
 //   * 补丁 / 写文件工具的内容不算命令，里面的 SKILL.md 不会被误判成「读了技能」。
+//
+// 显示口径（v3.2）
+//   * 每次实际调用都显示说明，不再有「只有前 3 次带说明」这回事；noteLimit 默认
+//     无限大 = 每次调用都显示。只有把它设成有限数才回到旧配额行为，那时才会读写
+//     skill-usage.state.json；默认路径完全不碰 state 文件（也不产生额外磁盘写）。
 //
 // 开销：约 35 ms/次工具调用，其中 ~32 ms 是 node 进程启动，脚本逻辑 2–3 ms。
 //       只有真的读到 SKILL.md、或命中 MCP/插件工具时才碰磁盘；注册表只在
@@ -43,7 +48,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import os from 'node:os';
 
-const HOOK_VERSION = 3;
+const HOOK_VERSION = 3.2;
 const HOME = os.homedir();
 const CODEX_HOME = (process.env.CODEX_HOME || '').trim() || path.join(HOME, '.codex');
 
@@ -54,7 +59,9 @@ const DEFAULT_LOG = path.join(CODEX_HOME, 'skill-usage.jsonl');
 const DEFAULT_STATE = path.join(CODEX_HOME, 'skill-usage.state.json');
 
 const BASE_MAX_BYTES = 2 * 1024 * 1024;
-const BASE_NOTE_LIMIT = 3;
+// 说明默认每次都显示 = 无限大。想恢复「同一个名字在一个项目里只带前 N 次」就把
+// noteLimit 设成有限数（那时启用计数状态）。0 = 从不显示说明。
+const BASE_NOTE_LIMIT = Infinity;
 const BASE_MAX_PROJECTS = 200;
 const BASE_MAX_NOTE_CHARS = 80;
 const BASE_IGNORE_SERVERS = ['node_repl', 'cua_repl', 'tools', 'codex_app'];
@@ -547,7 +554,8 @@ function isKnownToolName(tool) {
 }
 
 // ---------------------------------------------------------------- 计数状态
-// 「同一个名字在一个项目里只有前 N 次带说明」，计数按会话工作目录隔离。
+// 只有把 noteLimit 设成有限数时才用得上：那时「同一个名字在一个项目里只有前 N 次
+// 带说明」，计数按会话工作目录隔离。默认（无限）不读也不写这个文件。
 
 let stateCache;
 
@@ -615,24 +623,32 @@ function styleFor() {
   return STYLES[text('style', 'emoji')] || STYLES.emoji;
 }
 
+// noteLimit 默认无限大（每次调用都带说明）；只有显式配了有限数才启用配额计数。
+function noteLimitSetting() {
+  const value = Math.floor(num('noteLimit', BASE_NOTE_LIMIT));
+  return Number.isFinite(value) ? value : Infinity;
+}
+
 function formatNotice(found, ctx) {
   const style = styleFor();
   const verbose = flag('verbose', false);
-  const limit = Math.floor(num('noteLimit', BASE_NOTE_LIMIT));
+  const limit = noteLimitSetting();
+  const tracked = Number.isFinite(limit); // 默认每次显示：不计数，也就不碰 state 文件
   const withNotes = flag('note', true) && limit > 0;
   const dict = withNotes ? loadNotes() || {} : null;
   const auto = withNotes ? loadAutoNotes() : null;
-  const project = withNotes ? projectEntry(ctx.project) : null;
+  const project = withNotes && tracked ? projectEntry(ctx.project) : null;
   let dirty = false;
 
   const lines = found.map((entry) => {
     const head = `${style[entry.kind] || entry.kind} ▸ ${entry.name}`;
     let note = '';
     if (withNotes) {
-      // 超过配额后连字典/SKILL.md 都不再读：第 N+1 次起只剩名字。
+      // 只有有限配额才会出现「超过配额」：那时第 N+1 次起连字典/SKILL.md 都不再读，
+      // 只剩名字。默认无限配额，所以每次都要取说明。
       // 计数在「查过」时就 +1，否则没写进字典的名字会每次都去读 SKILL.md。
       const key = entry.kind + '=' + entry.name;
-      const seen = Number(project.names[key]) || 0;
+      const seen = tracked ? Number(project.names[key]) || 0 : 0;
       if (seen < limit) {
         note = lookupNote(dict, entry.name) || lookupNote(auto, entry.name);
         const file = resolveToken(entry.file, ctx.cwd);
@@ -643,8 +659,10 @@ function formatNotice(found, ctx) {
           }
           if (!note) note = frontMatterNote(file, { short: true });
         }
-        project.names[key] = seen + 1;
-        dirty = true;
+        if (tracked) {
+          project.names[key] = seen + 1;
+          dirty = true;
+        }
       }
     }
     let line = note ? `${head}  —  ${note}` : head;
@@ -956,6 +974,7 @@ function cmdCheck() {
     writable = `失败: ${err.message}`;
   }
   const logFile = logPath();
+  const limitShown = noteLimitSetting();
   const lines = [
     `codex_home      ${CODEX_HOME}`,
     `hook_version    v${HOOK_VERSION}`,
@@ -964,7 +983,7 @@ function cmdCheck() {
     `notes(自动)     ${autoNotesPath()}${fs.existsSync(autoNotesPath()) ? `  ${Math.round(autoNotesAge() / 1000)}s 前生成` : '  (未生成，会话启动时会生成)'}`,
     `log             ${logFile}${logFile.toLowerCase() === 'off' ? '' : fs.existsSync(logFile) ? `  ${fs.statSync(logFile).size} B` : '  (不存在)'}`,
     `state           ${stateFile}`,
-    `style           ${text('style', 'emoji')}  notify=${flag('notify', true)}  notifyStart=${flag('notifyStart', true)}  verbose=${flag('verbose', false)}  noteLimit=${Math.floor(num('noteLimit', BASE_NOTE_LIMIT))}`,
+    `style           ${text('style', 'emoji')}  notify=${flag('notify', true)}  notifyStart=${flag('notifyStart', true)}  verbose=${flag('verbose', false)}  noteLimit=${Number.isFinite(limitShown) ? limitShown : '每次（无上限）'}`,
     `scan_roots      ${scanRoots().join(' | ') || '(无)'}`,
     `writable        ${writable}`,
   ];

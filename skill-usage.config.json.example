@@ -9,13 +9,13 @@
   "maxBytes": 2097152,
   "debug": false,
 
-  "_noteLimit": "同一个 skill / 插件在一个项目里只有前 noteLimit 次出现时带中文注释，之后只显示名字；后来新出现的 skill / 插件自己重新从第一次开始计数。0 = 从不显示注释；想回到“每次都显示注释”就设一个很大的数（如 999999）。",
-  "noteLimit": 3,
+  "_noteLimit": "尾部那句说明默认每次都显示（不设 / null = 不设上限，此时也不读写 state 文件）。想让同一个 skill / 插件在一个项目里只带前 N 次说明，就填一个有限的数；后来新出现的 skill / 插件自己重新从第一次开始计数。0 = 从不显示说明。",
+  "noteLimit": null,
 
   "_maxNoteChars": "尾部那句说明最多几个字，超出截断（默认 80）",
   "maxNoteChars": 80,
 
-  "_state": "各项目的计数文件（按项目隔离）。删掉它就重置“前三次”的记录。",
+  "_state": "各项目的计数文件（按项目隔离）。只在 noteLimit 填了有限数时才用得上；删掉它就重置计数。",
   "state": "~/.codex/skill-usage.state.json",
 
   "_log": "日志路径，改成 \"off\" 就完全不写日志",

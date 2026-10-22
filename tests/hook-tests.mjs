@@ -45,9 +45,13 @@ fs.writeFileSync(
 
 const env = { ...process.env, CODEX_SKILL_USAGE_CONFIG: cfgPath };
 
-function run(event) {
+function run(event, extraEnv) {
   if (fs.existsSync(logPath)) fs.rmSync(logPath);
-  const res = spawnSync(process.execPath, ['--no-warnings', HOOK], { input: JSON.stringify(event), env, encoding: 'utf8' });
+  const res = spawnSync(process.execPath, ['--no-warnings', HOOK], {
+    input: JSON.stringify(event),
+    env: extraEnv ? { ...env, ...extraEnv } : env,
+    encoding: 'utf8',
+  });
   const raw = (res.stdout || '').trim();
   let message = '';
   if (raw) {
@@ -119,14 +123,60 @@ check('bash -lc 内层读', run(cmdEvent(`bash -lc "cat '${semi}'"`)).message, '
 check('cmd /c 内层读', run(cmdEvent(`cmd /c type "${spaced}"`)).message, 'spaced-skill');
 check('外壳里的非读命令不算', run(cmdEvent('pwsh -NoProfile -Command "npm test"')).message, (m) => m === '');
 
-// --- 坏 state：null 项 + 超过 200 个项目仍要能出提示 --------------------------
+// --- 说明默认每次都显示（v3.2） ----------------------------------------------
+{
+  fs.rmSync(statePath, { force: true });
+  const first = run(cmdEvent(`Get-Content "${spaced}"`)).message;
+  let sixth = first;
+  for (let i = 0; i < 5; i++) sixth = run(cmdEvent(`Get-Content "${spaced}"`)).message;
+  check('第 1 次带说明', first, '空格技能中文说明');
+  check('第 6 次仍带说明（不再限前 3 次）', sixth, '空格技能中文说明');
+  check('每次都显示：提示逐字相同', sixth, (m) => m === first);
+  check('每次都显示：默认不写 state 文件', fs.existsSync(statePath) ? '写入了 state' : '无 state 文件', '无 state 文件');
+
+  // 说明来自自动索引（不在手写字典里）时，同样每次都带
+  run({ hook_event_name: 'SessionStart', source: 'startup', cwd: tmp });
+  let autoLast = '';
+  for (let i = 0; i < 4; i++) autoLast = run(cmdEvent(`Get-Content "${semi}"`)).message;
+  check('自动索引来的说明也每次都带', autoLast, '分号技能');
+
+  // MCP 命中：没有说明也要每次都出名字
+  let mcpLast = '';
+  for (let i = 0; i < 4; i++) mcpLast = run({ hook_event_name: 'PreToolUse', tool_name: 'mcp__code_review__fetch_pr', tool_input: {}, cwd: tmp }).message;
+  check('MCP 每次调用都显示', mcpLast, 'code_review/fetch_pr');
+}
+
+// --- 有限 noteLimit：旧配额行为保留（可回退） ---------------------------------
+{
+  fs.rmSync(statePath, { force: true });
+  const two = { CODEX_SKILL_USAGE_NOTE_LIMIT: '2' };
+  check('有限配额：第 1 次带说明', run(cmdEvent(`Get-Content "${spaced}"`), two).message, '空格技能中文说明');
+  check('有限配额：第 2 次仍带说明', run(cmdEvent(`Get-Content "${spaced}"`), two).message, '空格技能中文说明');
+  check(
+    '有限配额：第 3 次只剩名字',
+    run(cmdEvent(`Get-Content "${spaced}"`), two).message,
+    (m) => m.includes('spaced-skill') && !m.includes('空格技能中文说明'),
+  );
+  check(
+    'noteLimit=0：只显示名字',
+    run(cmdEvent(`Get-Content "${spaced}"`), { CODEX_SKILL_USAGE_NOTE_LIMIT: '0' }).message,
+    (m) => m.includes('spaced-skill') && !m.includes('空格技能中文说明'),
+  );
+}
+
+// --- 坏 state：null 项 + 超过 200 个项目仍要能出提示（有限配额下才用 state） ---
 {
   const projects = {};
   for (let i = 0; i < 205; i++) projects[`c:\\p${i}`] = { seen: '2026-01-01T00:00:00.000Z', names: {} };
   projects['c:\\broken'] = null;
   fs.writeFileSync(statePath, JSON.stringify({ projects }));
-  check('坏 state 仍能出提示', run(cmdEvent(`Get-Content "${spaced}"`)).message, 'spaced-skill');
-  check('坏 state 被剪回 200 个项目', String(Object.keys(JSON.parse(fs.readFileSync(statePath, 'utf8')).projects).length), '200');
+  const quota = { CODEX_SKILL_USAGE_NOTE_LIMIT: '2' };
+  check('坏 state 仍能出提示', run(cmdEvent(`Get-Content "${spaced}"`), quota).message, 'spaced-skill');
+  check(
+    '坏 state 被剪回 200 个项目',
+    String(Object.keys(JSON.parse(fs.readFileSync(statePath, 'utf8')).projects).length),
+    '200',
+  );
 }
 
 // --- 未闭合引号 / 空 stdin ----------------------------------------------------
